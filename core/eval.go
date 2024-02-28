@@ -261,7 +261,8 @@ func evalINCR(args []string) []byte {
 // if not evalLSHIFT returns encoded error response.
 // evalLSHIFT returns the left shifted value for the key if there are no errors.
 func evalLSHIFT(args []string) []byte {
-	if len(args) != 1 {
+	var args_count int = len(args)
+	if args_count != 1 && args_count != 2 {
 		return Encode(errors.New("ERR wrong number of arguments for 'lshift' command"), false)
 	}
 
@@ -279,8 +280,19 @@ func evalLSHIFT(args []string) []byte {
 		return Encode(err, false)
 	}
 
+	var left_shift_operand int64 = 1
+	if args_count == 2 {
+		num, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil{
+			return Encode(errors.New("ERR only integer values can be inserted in 'lshift'"), false)
+		}
+		if num < 0 || num > 100 {
+			return Encode(errors.New("ERR 'lshift' only allowed for numbers in range 0 and 100(inclusive)"), false)
+		}
+		left_shift_operand = num
+	}
 	i, _ := strconv.ParseInt(obj.Value.(string), 10, 64)
-	new_left_shifted_i := i << 1
+	new_left_shifted_i := i << left_shift_operand
 	obj.Value = strconv.FormatInt(new_left_shifted_i, 10)
 
 	return Encode(new_left_shifted_i, false)
