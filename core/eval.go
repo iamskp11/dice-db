@@ -229,7 +229,6 @@ func evalINCR(args []string) []byte {
 	if len(args) != 1 {
 		return Encode(errors.New("ERR wrong number of arguments for 'incr' command"), false)
 	}
-	log.Println("Executing with args", args)
 
 	var key string = args[0]
 	obj := Get(key)
