@@ -298,6 +298,52 @@ func evalLSHIFT(args []string) []byte {
 	return Encode(new_left_shifted_i, false)
 }
 
+// evalRSHIFT increments the value of the specified key after dividing it by 2**x,
+// if the key exists and the value is integer format.
+// The key should be the only param in args.
+// If the key does not exist, new key is created with value 1,
+// the value of the new key is then incremented.
+// The value for the queried key should be of integer format,
+// if not evalRSHIFT returns encoded error response.
+// evalRSHIFT returns the right shifted value for the key if there are no errors.
+func evalRSHIFT(args []string) []byte {
+	var args_count int = len(args)
+	if args_count != 1 && args_count != 2 {
+		return Encode(errors.New("ERR wrong number of arguments for 'rshift' command"), false)
+	}
+
+	var key string = args[0]
+	obj := Get(key)
+	if obj == nil {
+		return Encode(errors.New("ERR This key does not exists, please create key before performing 'rshift' operation"), false)
+	}
+
+	if err := assertType(obj.TypeEncoding, OBJ_TYPE_STRING); err != nil {
+		return Encode(err, false)
+	}
+
+	if err := assertEncoding(obj.TypeEncoding, OBJ_ENCODING_INT); err != nil {
+		return Encode(err, false)
+	}
+
+	var right_shift_operand int64 = 1
+	if args_count == 2 {
+		num, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil{
+			return Encode(errors.New("ERR only integer values can be inserted in 'rshift'"), false)
+		}
+		if num < 0 || num > 100 {
+			return Encode(errors.New("ERR 'rshift' only allowed for numbers in range 0 and 100(inclusive)"), false)
+		}
+		right_shift_operand = num
+	}
+	i, _ := strconv.ParseInt(obj.Value.(string), 10, 64)
+	new_right_shifted_i := i >> right_shift_operand
+	obj.Value = strconv.FormatInt(new_right_shifted_i, 10)
+
+	return Encode(new_right_shifted_i, false)
+}
+
 // evalINFO creates a buffer with the info of total keys per db
 // Returns the encoded buffer as response
 func evalINFO(args []string) []byte {
@@ -934,6 +980,8 @@ func executeCommand(cmd *RedisCmd, c *Client) []byte {
 		return evalMULTI(cmd.Args)
 	case "LSHIFT":
 		return evalLSHIFT(cmd.Args)
+	case "RSHIFT":
+		return evalRSHIFT(cmd.Args)
 	case "EXEC":
 		if !c.isTxn {
 			return Encode(errors.New("ERR EXEC without MULTI"), false)
