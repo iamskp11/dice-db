@@ -229,6 +229,7 @@ func evalINCR(args []string) []byte {
 	if len(args) != 1 {
 		return Encode(errors.New("ERR wrong number of arguments for 'incr' command"), false)
 	}
+	log.Println("Executing with args", args)
 
 	var key string = args[0]
 	obj := Get(key)
@@ -250,6 +251,40 @@ func evalINCR(args []string) []byte {
 	obj.Value = strconv.FormatInt(i, 10)
 
 	return Encode(i, false)
+}
+
+// evalLSHIFT increments the value of the specified key after multiplying it by 2**x,
+// if the key exists and the value is integer format.
+// The key should be the only param in args.
+// If the key does not exist, new key is created with value 1,
+// the value of the new key is then incremented.
+// The value for the queried key should be of integer format,
+// if not evalLSHIFT returns encoded error response.
+// evalLSHIFT returns the left shifted value for the key if there are no errors.
+func evalLSHIFT(args []string) []byte {
+	if len(args) != 1 {
+		return Encode(errors.New("ERR wrong number of arguments for 'lshift' command"), false)
+	}
+
+	var key string = args[0]
+	obj := Get(key)
+	if obj == nil {
+		return Encode(errors.New("ERR This key does not exists, please create key before performing 'lshift' operation"), false)
+	}
+
+	if err := assertType(obj.TypeEncoding, OBJ_TYPE_STRING); err != nil {
+		return Encode(err, false)
+	}
+
+	if err := assertEncoding(obj.TypeEncoding, OBJ_ENCODING_INT); err != nil {
+		return Encode(err, false)
+	}
+
+	i, _ := strconv.ParseInt(obj.Value.(string), 10, 64)
+	new_left_shifted_i := i << 1
+	obj.Value = strconv.FormatInt(new_left_shifted_i, 10)
+
+	return Encode(new_left_shifted_i, false)
 }
 
 // evalINFO creates a buffer with the info of total keys per db
@@ -886,6 +921,8 @@ func executeCommand(cmd *RedisCmd, c *Client) []byte {
 	case "MULTI":
 		c.TxnBegin()
 		return evalMULTI(cmd.Args)
+	case "LSHIFT":
+		return evalLSHIFT(cmd.Args)
 	case "EXEC":
 		if !c.isTxn {
 			return Encode(errors.New("ERR EXEC without MULTI"), false)
