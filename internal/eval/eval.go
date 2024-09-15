@@ -2832,3 +2832,58 @@ func evalSELECT(args []string, store *dstore.Store) []byte {
 
 	return clientio.RespOK
 }
+
+
+// evalJSONOBJLEN returns the number of fields in a JSON object at a specified path within a Redis JSON document.
+// Returns: An integer indicating the number of fields in the JSON object, or an error if the path does not point to an object or the key does not exist.
+func evalJSONOBJLEN(args []string, store *dstore.Store) []byte {
+	if len(args) < 1 {
+		return diceerrors.NewErrArity("JSON.OBJLEN")
+	}
+
+	key := args[0]
+	// Default path is root if not specified
+	path := defaultRootPath
+	if len(args) > 1 {
+		path = args[1]
+	}
+
+	// Retrieve the object from the database
+	// TODO: Check if we should throw error here
+	obj := store.Get(key)
+	if obj == nil {
+		return clientio.RespNIL
+	}
+
+	// Check if the object is of JSON type
+	errWithMessage := object.AssertTypeAndEncoding(obj.TypeEncoding, object.ObjTypeJSON, object.ObjEncodingJSON)
+	if errWithMessage != nil {
+		return errWithMessage
+	}
+
+	jsonData := obj.Value
+	// If path is root, return length of the entire JSON
+	if path == defaultRootPath {
+		jsonObjLen := len(jsonData.(map[string]interface{}))
+		return clientio.Encode(jsonObjLen, false)
+	}
+
+	// Parse the JSONPath expression
+	expr, err := jp.ParseString(path)
+	if err != nil {
+		return diceerrors.NewErrWithMessage("invalid JSONPath")
+	}
+
+	// Execute the JSONPath query
+	results := expr.Get(jsonData)
+	if len(results) == 0 {
+		return clientio.RespNIL
+	}
+
+	if utils.GetJSONFieldType(results[0]) != utils.ObjectType {
+		return diceerrors.NewErrWithMessage("the path does not point to a JSON object")
+	}
+
+	jsonObjLen := len(results[0].(map[string]interface{}))
+	return clientio.Encode(jsonObjLen, false)
+}

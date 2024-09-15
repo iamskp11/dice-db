@@ -678,6 +678,16 @@ var (
 		Eval:  evalSELECT,
 		Arity: 1,
 	}
+	jsonobjlenCmdMeta = DiceCmdMeta{
+		Name: "JSON.OBJLEN",
+		Info: `JSON.OBJLEN key [path]
+		Returns the encoded RESP value of the key, if present
+		Null reply: If the key doesn't exist or has expired.
+		Error reply: If the number of arguments is incorrect or the stored value is not a JSON type.`,
+		Eval:     evalJSONOBJLEN,
+		Arity:    2,
+		KeySpecs: KeySpecs{BeginIndex: 1},
+	}
 )
 
 func init() {
@@ -759,6 +769,7 @@ func init() {
 	DiceCmds["JSON.STRLEN"] = jsonStrlenCmdMeta
 	DiceCmds["HLEN"] = hlenCmdMeta
 	DiceCmds["SELECT"] = selectCmdMeta
+	DiceCmds["JSON.OBJLEN"] = jsonobjlenCmdMeta
 }
 
 // Function to convert DiceCmdMeta to []interface{}
