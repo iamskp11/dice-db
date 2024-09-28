@@ -4491,18 +4491,24 @@ func evalBITFIELDRO(args []string, store *dstore.Store) []byte {
 	obj := store.Get(key)
 
 	/* Lookup for read is ok if key doesn't exit, but errors if it's not a string. */
-	if obj != nil {
-		if object.AssertType(obj.TypeEncoding, object.ObjTypeString) != nil {
-			return diceerrors.NewErrWithFormattedMessage(diceerrors.WrongTypeErr)
-		}
-	} else {
+	if obj == nil {
 		obj = store.NewObj(NewByteArray(1), -1, object.ObjTypeByteArray, object.ObjEncodingByteArray)
 		store.Put(args[0], obj)
 	}
 
-	value, err := NewByteArrayFromObj(obj)
-	if err != nil {
-		return diceerrors.NewErrWithMessage("value is not a valid byte array")
+	var value *ByteArray
+	var err error
+
+	switch oType, _ := object.ExtractTypeEncoding(obj); oType {
+	case object.ObjTypeByteArray:
+		value = obj.Value.(*ByteArray)
+	case object.ObjTypeString, object.ObjTypeInt:
+		value, err = NewByteArrayFromObj(obj)
+		if err != nil {
+			return diceerrors.NewErrWithMessage("value is not a valid byte array")
+		}
+	default:
+		return diceerrors.NewErrWithFormattedMessage(diceerrors.WrongTypeErr)
 	}
 
 	var result []interface{}
