@@ -8,7 +8,7 @@ type DiceCmdMeta struct {
 	Eval  func([]string, *dstore.Store) []byte
 	Arity int // number of arguments, it is possible to use -N to say >= N
 	KeySpecs
-	SubCommands []string // list of sub-commands supported by the commmand
+	SubCommands []string // list of sub-commands supported by the command
 
 	// IsMigrated indicates whether a command has been migrated to a new evaluation
 	// mechanism. If true, the command uses the newer evaluation logic represented by
@@ -926,27 +926,53 @@ var (
 		Arity:    -2,
 		KeySpecs: KeySpecs{BeginIndex: 1},
 	}
-	zaddCmdMeta = DiceCmdMeta{
-		Name: "ZADD",
-		Info: `ZADD key [NX|XX] [CH] [INCR] score member [score member ...]
-		Adds all the specified members with the specified scores to the sorted set stored at key.
-		Options: NX, XX, CH, INCR
-		Returns the number of elements added to the sorted set, not including elements already existing for which the score was updated.`,
-		Eval:     evalZADD,
-		Arity:    -4,
+	bitfieldCmdMeta = DiceCmdMeta{
+		Name: "BITFIELD",
+		Info: `The command treats a Redis string as an array of bits, 
+		and is capable of addressing specific integer fields of varying bit widths
+		and arbitrary non (necessary) aligned offset. 
+		In practical terms using this command you can set, for example, 
+		a signed 5 bits integer at bit offset 1234 to a specific value, 
+		retrieve a 31 bit unsigned integer from offset 4567. 
+		Similarly the command handles increments and decrements of the 
+		specified integers, providing guaranteed and well specified overflow 
+		and underflow behavior that the user can configure.
+		The following is the list of supported commands.
+		GET <encoding> <offset> -- Returns the specified bit field.
+		SET <encoding> <offset> <value> -- Set the specified bit field 
+		and returns its old value.
+		INCRBY <encoding> <offset> <increment> -- Increments or decrements 
+		(if a negative increment is given) the specified bit field and returns the new value.
+		There is another subcommand that only changes the behavior of successive
+		INCRBY and SET subcommands calls by setting the overflow behavior:
+		OVERFLOW [WRAP|SAT|FAIL]`,
+		Arity:    -1,
 		KeySpecs: KeySpecs{BeginIndex: 1},
+		Eval:     evalBITFIELD,
 	}
-	zrangeCmdMeta = DiceCmdMeta{
-		Name: "ZRANGE",
-		Info: `ZRANGE key start stop [WithScores]
-		Returns the specified range of elements in the sorted set stored at key.
-		The elements are considered to be ordered from the lowest to the highest score.
-		Both start and stop are 0-based indexes, where 0 is the first element, 1 is the next element and so on.
-		These indexes can also be negative numbers indicating offsets from the end of the sorted set, with -1 being the last element of the sorted set, -2 the penultimate element and so on.
-		Returns the specified range of elements in the sorted set.`,
-		Eval:     evalZRANGE,
-		Arity:    -4,
+	bitfieldroCmdMeta = DiceCmdMeta{
+		Name: "BITFIELD_RO",
+		Info: `The command treats a string as an array of bits, 
+		and is capable of addressing specific integer fields of varying bit widths
+		and arbitrary non (necessary) aligned offset. 
+		In practical terms using this command you can set, for example, 
+		a signed 5 bits integer at bit offset 1234 to a specific value, 
+		retrieve a 31 bit unsigned integer from offset 4567. 
+		Similarly the command handles increments and decrements of the 
+		specified integers, providing guaranteed and well specified overflow 
+		and underflow behavior that the user can configure.
+		The following is the list of supported commands.
+		GET <encoding> <offset> -- Returns the specified bit field.
+		SET <encoding> <offset> <value> -- Set the specified bit field 
+		and returns its old value.
+		INCRBY <encoding> <offset> <increment> -- Increments or decrements 
+		(if a negative increment is given) the specified bit field and returns the new value.
+		There is another subcommand that only changes the behavior of successive
+		INCRBY and SET subcommands calls by setting the overflow behavior:
+		OVERFLOW [WRAP|SAT|FAIL]`,
+		Arity:    -1,
 		KeySpecs: KeySpecs{BeginIndex: 1},
+		Eval:     evalBITFIELDRO,
 	}
 )
 
@@ -1052,8 +1078,8 @@ func init() {
 	DiceCmds["HRANDFIELD"] = hrandfieldCmdMeta
 	DiceCmds["HDEL"] = hdelCmdMeta
 	DiceCmds["HVALS"] = hValsCmdMeta
-	DiceCmds["ZADD"] = zaddCmdMeta
-	DiceCmds["ZRANGE"] = zrangeCmdMeta
+	DiceCmds["BITFIELD"] = bitfieldCmdMeta
+	DiceCmds["BITFIELD_RO"] = bitfieldroCmdMeta
 }
 
 // Function to convert DiceCmdMeta to []interface{}

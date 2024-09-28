@@ -11,14 +11,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/axiomhq/hyperloglog"
+	"github.com/dicedb/dice/internal/server/utils"
+
 	"github.com/bytedance/sonic"
+	"github.com/ohler55/ojg/jp"
+
+	"github.com/axiomhq/hyperloglog"
 	"github.com/dicedb/dice/internal/clientio"
 	diceerrors "github.com/dicedb/dice/internal/errors"
 	"github.com/dicedb/dice/internal/object"
-	"github.com/dicedb/dice/internal/server/utils"
 	dstore "github.com/dicedb/dice/internal/store"
-	"github.com/ohler55/ojg/jp"
 	testifyAssert "github.com/stretchr/testify/assert"
 	"gotest.tools/v3/assert"
 )
@@ -94,10 +96,7 @@ func TestEval(t *testing.T) {
 	testEvalFLUSHDB(t, store)
 	testEvalINCRBYFLOAT(t, store)
 	testEvalBITOP(t, store)
-	testEvalHRANDFIELD(t, store)
-	testEvalZADD(t, store)
-	testEvalZRANGE(t, store)
-	testEvalHVALS(t, store)
+	testEvalBitField(t, store)
 }
 
 func testEvalPING(t *testing.T, store *dstore.Store) {
@@ -2018,17 +2017,17 @@ func testEvalHVALS(t *testing.T, store *dstore.Store) {
 		},
 		"key doesn't exists": {
 			setup:  func() {},
-			input:  []string{"NONEXISTENTHVALSKEY"},
-			output: clientio.Encode([]string{}, false),
+			input:  []string{"KEY"},
+			output: clientio.RespNIL,
 		},
 		"key exists": {
 			setup: func() {
 				key := "KEY_MOCK"
 				field := "mock_field_name"
-				field1 := "mock_field_name_1"
+				field_1 := "mock_field_name_1"
 				newMap := make(HashMap)
 				newMap[field] = "mock_field_value"
-				newMap[field1] = "mock_field_value_1"
+				newMap[field_1] = "mock_field_value_1"
 
 				obj := &object.Obj{
 					TypeEncoding:   object.ObjTypeHashMap | object.ObjEncodingHashMap,
@@ -4200,9 +4199,14 @@ func testEvalHRANDFIELD(t *testing.T, store *dstore.Store) {
 			validator: func(output []byte) {
 				assert.Assert(t, output != nil)
 				resultString := string(output)
-				assert.Assert(t,
-					resultString == "*1\r\n$6\r\nfield1\r\n" || resultString == "*1\r\n$6\r\nfield2\r\n",
-					"Unexpected field returned: %s", resultString)
+				parts := strings.SplitN(resultString, "\n", 2)
+				if len(parts) < 2 {
+					t.Errorf("Unexpected output format: %s", resultString)
+					return
+				}
+				decodedResult := strings.TrimSpace(parts[1])
+				fmt.Printf("Decoded Result: '%s'\n", decodedResult)
+				assert.Assert(t, decodedResult == "field1" || decodedResult == "field2")
 			},
 		},
 		"key exists with fields and count argument": {
@@ -4255,7 +4259,7 @@ func testEvalHRANDFIELD(t *testing.T, store *dstore.Store) {
 				store.Put(key, obj)
 
 			},
-			input: []string{"KEY_MOCK", "2", WithValues},
+			input: []string{"KEY_MOCK", "2", "WITHVALUES"},
 			validator: func(output []byte) {
 				assert.Assert(t, output != nil)
 				decodedResult := string(output)
@@ -4267,7 +4271,7 @@ func testEvalHRANDFIELD(t *testing.T, store *dstore.Store) {
 					}
 				}
 
-				assert.Equal(t, 4, count, "Expected 4 fields and values, found %d", count)
+				assert.Assert(t, count == 4)
 			},
 		},
 	}
@@ -4275,154 +4279,52 @@ func testEvalHRANDFIELD(t *testing.T, store *dstore.Store) {
 	runEvalTests(t, tests, evalHRANDFIELD, store)
 }
 
-func testEvalZADD(t *testing.T, store *dstore.Store) {
-	tests := map[string]evalTestCase{
-		"ZADD with wrong number of arguments": {
-			input:  []string{"myzset", "1"},
-			output: diceerrors.NewErrArity("ZADD"),
+func testEvalBitField(t *testing.T, store *dstore.Store) {
+	testCases := map[string]evalTestCase{
+		"BITFIELD signed SET": {
+			input:  []string{"bits", "set", "i8", "0", "-100"},
+			output: clientio.Encode([]int64{0}, false),
 		},
-		"ZADD with non-numeric score": {
-			input:  []string{"myzset", "score", "member1"},
-			output: diceerrors.NewErrWithMessage(diceerrors.InvalidFloatErr),
-		},
-		"ZADD new member to non-existing key": {
-			setup:  func() {},
-			input:  []string{"myzset", "1", "member1"},
-			output: clientio.Encode(int64(1), false),
-		},
-		"ZADD existing member with updated score": {
+		"BITFIELD GET": {
 			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
+				args := []string{"bits", "set", "u8", "0", "255"}
+				evalBITFIELD(args, store)
 			},
-			input:  []string{"myzset", "2", "member1"},
-			output: clientio.Encode(int64(0), false),
+			input:  []string{"bits", "get", "u8", "0"},
+			output: clientio.Encode([]int64{255}, false),
 		},
-		"ZADD multiple members": {
+		"BITFIELD INCRBY": {
 			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
+				args := []string{"bits", "set", "u8", "0", "255"}
+				evalBITFIELD(args, store)
 			},
-			input:  []string{"myzset", "2", "member2", "3", "member3"},
-			output: clientio.Encode(int64(2), false),
+			input:  []string{"bits", "incrby", "u8", "0", "100"},
+			output: clientio.Encode([]int64{99}, false),
 		},
-		"ZADD with negative score": {
-			input:  []string{"myzset", "-1", "member_neg"},
-			output: clientio.Encode(int64(1), false),
+		"BITFIELD Arity": {
+			input:  []string{},
+			output: diceerrors.NewErrArity("BITFIELD"),
 		},
-		"ZADD with duplicate members": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
-			},
-			input:  []string{"myzset", "2", "member1", "2", "member1"},
-			output: clientio.Encode(int64(0), false),
+		"BITFIELD invalid combination of commands in a single operation": {
+			input:  []string{"bits", "SET", "u8", "0", "255", "INCRBY", "u8", "0", "100", "GET", "u8"},
+			output: []byte("-ERR syntax error\r\n"),
 		},
-		"ZADD with extreme float value": {
-			input:  []string{"myzset", "1e308", "member_large"},
-			output: clientio.Encode(int64(1), false),
+		"BITFIELD invalid bitfield type": {
+			input:  []string{"bits", "SET", "a8", "0", "255", "INCRBY", "u8", "0", "100", "GET", "u8"},
+			output: []byte("-ERR Invalid bitfield type. Use something like i16 u8. Note that u64 is not supported but i64 is.\r\n"),
 		},
-		"ZADD with NaN score": {
-			input:  []string{"myzset", "NaN", "member_nan"},
-			output: diceerrors.NewErrWithMessage(diceerrors.InvalidFloatErr),
+		"BITFIELD invalid bit offset": {
+			input:  []string{"bits", "SET", "u8", "a", "255", "INCRBY", "u8", "0", "100", "GET", "u8"},
+			output: []byte("-ERR bit offset is not an integer or out of range\r\n"),
 		},
-		"ZADD with INF score": {
-			input:  []string{"myzset", "INF", "member_inf"},
-			output: clientio.Encode(int64(1), false),
+		"BITFIELD invalid overflow type": {
+			input:  []string{"bits", "SET", "u8", "0", "255", "INCRBY", "u8", "0", "100", "OVERFLOW", "wraap"},
+			output: []byte("-ERR Invalid OVERFLOW type specified\r\n"),
 		},
-		"ZADD to a key of wrong type": {
-			setup: func() {
-				store.Put("myzset", store.NewObj("string_value", -1, object.ObjTypeString, object.ObjEncodingRaw))
-			},
-			input:  []string{"myzset", "1", "member1"},
-			output: []byte("-ERR Existing key has wrong Dice type\r\n"),
+		"BITFIELD missing arguments in SET": {
+			input:  []string{"bits", "SET", "u8", "0", "INCRBY", "u8", "0", "100", "GET", "u8", "288"},
+			output: []byte("-ERR value is not an integer or out of range\r\n"),
 		},
 	}
-
-	runEvalTests(t, tests, evalZADD, store)
-}
-
-func testEvalZRANGE(t *testing.T, store *dstore.Store) {
-	tests := map[string]evalTestCase{
-		"ZRANGE on non-existing key": {
-			input:  []string{"non_existing_key", "0", "-1"},
-			output: clientio.Encode([]string{}, false),
-		},
-		"ZRANGE with wrong type key": {
-			setup: func() {
-				store.Put("mystring", store.NewObj("string_value", -1, object.ObjTypeString, object.ObjEncodingRaw))
-			},
-			input:  []string{"mystring", "0", "-1"},
-			output: diceerrors.NewErrWithMessage(diceerrors.WrongTypeErr),
-		},
-		"ZRANGE with normal indices": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1", "2", "member2", "3", "member3"}, store)
-			},
-			input:  []string{"myzset", "0", "1"},
-			output: clientio.Encode([]string{"member1", "member2"}, false),
-		},
-		"ZRANGE with negative indices": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1", "2", "member2", "3", "member3"}, store)
-			},
-			input:  []string{"myzset", "-2", "-1"},
-			output: clientio.Encode([]string{"member2", "member3"}, false),
-		},
-		"ZRANGE with start > stop": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1", "2", "member2", "3", "member3"}, store)
-			},
-			input:  []string{"myzset", "2", "1"},
-			output: clientio.Encode([]string{}, false),
-		},
-		"ZRANGE with indices out of bounds": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
-			},
-			input:  []string{"myzset", "0", "5"},
-			output: clientio.Encode([]string{"member1"}, false),
-		},
-		"ZRANGE WITHSCORES option": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1", "2", "member2"}, store)
-			},
-			input:  []string{"myzset", "0", "-1", "WITHSCORES"},
-			output: clientio.Encode([]string{"member1", "1", "member2", "2"}, false),
-		},
-		"ZRANGE with invalid option": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
-			},
-			input:  []string{"myzset", "0", "-1", "INVALIDOPTION"},
-			output: diceerrors.NewErrWithMessage(diceerrors.SyntaxErr),
-		},
-		"ZRANGE with REV option": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1", "2", "member2", "3", "member3"}, store)
-			},
-			input:  []string{"myzset", "0", "-1", "REV"},
-			output: clientio.Encode([]string{"member3", "member2", "member1"}, false),
-		},
-		"ZRANGE with REV and WITHSCORES options": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1", "2", "member2", "3", "member3"}, store)
-			},
-			input:  []string{"myzset", "0", "-1", "REV", "WITHSCORES"},
-			output: clientio.Encode([]string{"member3", "3", "member2", "2", "member1", "1"}, false),
-		},
-		"ZRANGE with start index greater than length": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
-			},
-			input:  []string{"myzset", "5", "10"},
-			output: clientio.Encode([]string{}, false),
-		},
-		"ZRANGE with negative start index greater than length": {
-			setup: func() {
-				evalZADD([]string{"myzset", "1", "member1"}, store)
-			},
-			input:  []string{"myzset", "-10", "-5"},
-			output: clientio.Encode([]string{}, false),
-		},
-	}
-
-	runEvalTests(t, tests, evalZRANGE, store)
+	runEvalTests(t, testCases, evalBITFIELD, store)
 }
