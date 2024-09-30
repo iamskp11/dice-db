@@ -952,24 +952,8 @@ var (
 	}
 	bitfieldroCmdMeta = DiceCmdMeta{
 		Name: "BITFIELD_RO",
-		Info: `The command treats a string as an array of bits, 
-		and is capable of addressing specific integer fields of varying bit widths
-		and arbitrary non (necessary) aligned offset. 
-		In practical terms using this command you can set, for example, 
-		a signed 5 bits integer at bit offset 1234 to a specific value, 
-		retrieve a 31 bit unsigned integer from offset 4567. 
-		Similarly the command handles increments and decrements of the 
-		specified integers, providing guaranteed and well specified overflow 
-		and underflow behavior that the user can configure.
-		The following is the list of supported commands.
-		GET <encoding> <offset> -- Returns the specified bit field.
-		SET <encoding> <offset> <value> -- Set the specified bit field 
-		and returns its old value.
-		INCRBY <encoding> <offset> <increment> -- Increments or decrements 
-		(if a negative increment is given) the specified bit field and returns the new value.
-		There is another subcommand that only changes the behavior of successive
-		INCRBY and SET subcommands calls by setting the overflow behavior:
-		OVERFLOW [WRAP|SAT|FAIL]`,
+		Info: `It is read-only variant of the BITFIELD command. 
+		It is like the original BITFIELD but only accepts GET subcommand.`,
 		Arity:    -1,
 		KeySpecs: KeySpecs{BeginIndex: 1},
 		Eval:     evalBITFIELDRO,

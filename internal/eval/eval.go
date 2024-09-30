@@ -4438,18 +4438,7 @@ func evalBITFIELD(args []string, store *dstore.Store) []byte {
 	return clientio.Encode(result, false)
 }
 
-// evalBITFIELD evaluates BITFIELD operations on a key store string, int or bytearray types
-// it returns an array of results depending on the subcommands
-// it allows mutation using SET and INCRBY commands
-// returns arity error, offset type error, overflow type error, encoding type error, integer error, syntax error
-// GET <encoding> <offset> -- Returns the specified bit field.
-// SET <encoding> <offset> <value> -- Set the specified bit field
-// and returns its old value.
-// INCRBY <encoding> <offset> <increment> -- Increments or decrements
-// (if a negative increment is given) the specified bit field and returns the new value.
-// There is another subcommand that only changes the behavior of successive
-// INCRBY and SET subcommands calls by setting the overflow behavior:
-// OVERFLOW [WRAP|SAT|FAIL]`
+// Read-only variant of the BITFIELD command. It is like the original BITFIELD but only accepts GET subcommand and can safely be used in read-only replicas.
 func evalBITFIELDRO(args []string, store *dstore.Store) []byte {
 	if len(args) < 1 {
 		return diceerrors.NewErrArity("BITFIELD_RO")
