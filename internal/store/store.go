@@ -5,43 +5,62 @@ import (
 
 	"github.com/ohler55/ojg/jp"
 
+	"github.com/dicedb/dice/internal/common"
 	"github.com/dicedb/dice/internal/object"
 	"github.com/dicedb/dice/internal/sql"
 	"github.com/xwb1989/sqlparser"
 
 	"github.com/dicedb/dice/internal/server/utils"
 
-	"github.com/cockroachdb/swiss"
 	"github.com/dicedb/dice/config"
 )
 
-// WatchEvent represents a change in a watched key.
-type WatchEvent struct {
+func NewStoreRegMap() common.ITable[string, *object.Obj] {
+	return &common.RegMap[string, *object.Obj]{
+		M: make(map[string]*object.Obj),
+	}
+}
+
+func NewExpireRegMap() common.ITable[*object.Obj, uint64] {
+	return &common.RegMap[*object.Obj, uint64]{
+		M: make(map[*object.Obj]uint64),
+	}
+}
+
+func NewStoreMap() common.ITable[string, *object.Obj] {
+	return NewStoreRegMap()
+}
+
+func NewExpireMap() common.ITable[*object.Obj, uint64] {
+	return NewExpireRegMap()
+}
+
+// QueryWatchEvent represents a change in a watched key.
+type QueryWatchEvent struct {
 	Key       string
 	Operation string
 	Value     object.Obj
 }
 
 type Store struct {
-	store     *swiss.Map[string, *object.Obj]
-	expires   *swiss.Map[*object.Obj, uint64] // Does not need to be thread-safe as it is only accessed by a single thread.
-	watchChan chan WatchEvent
+	store     common.ITable[string, *object.Obj]
+	expires   common.ITable[*object.Obj, uint64] // Does not need to be thread-safe as it is only accessed by a single thread.
+	numKeys   int
+	watchChan chan QueryWatchEvent
 }
 
-func NewStore(watchChan chan WatchEvent) *Store {
+func NewStore(watchChan chan QueryWatchEvent) *Store {
 	return &Store{
-		store:     swiss.New[string, *object.Obj](10240),
-		expires:   swiss.New[*object.Obj, uint64](10240),
+		store:     NewStoreRegMap(),
+		expires:   NewExpireRegMap(),
 		watchChan: watchChan,
 	}
 }
 
 func ResetStore(store *Store) *Store {
-	if KeyspaceStat[0] != nil {
-		KeyspaceStat[0]["keys"] -= store.store.Len()
-	}
-	store.store = swiss.New[string, *object.Obj](10240)
-	store.expires = swiss.New[*object.Obj, uint64](10240)
+	store.numKeys = 0
+	store.store = NewStoreMap()
+	store.expires = NewExpireMap()
 
 	return store
 }
@@ -59,11 +78,9 @@ func (store *Store) NewObj(value interface{}, expDurationMs int64, oType, oEnc u
 }
 
 func (store *Store) ResetStore() {
-	if KeyspaceStat[0] != nil {
-		KeyspaceStat[0]["keys"] -= store.store.Len()
-	}
-	store.store.Clear()
-	store.expires.Clear()
+	store.numKeys = 0
+	store.store = NewStoreMap()
+	store.expires = NewExpireMap()
 }
 
 type PutOptions struct {
@@ -72,6 +89,14 @@ type PutOptions struct {
 
 func (store *Store) Put(k string, obj *object.Obj, opts ...PutOption) {
 	store.putHelper(k, obj, opts...)
+}
+
+func (store *Store) GetKeyCount() int {
+	return store.numKeys
+}
+
+func (store *Store) IncrementKeyCount() {
+	store.numKeys++
 }
 
 func getDefaultOptions() *PutOptions {
@@ -119,12 +144,10 @@ func (store *Store) putHelper(k string, obj *object.Obj, opts ...PutOption) {
 			}
 		}
 		store.expires.Delete(currentObject)
+	} else {
+		store.numKeys++
 	}
 	store.store.Put(k, obj)
-
-	if !ok {
-		store.incrementKeyCount()
-	}
 
 	if store.watchChan != nil {
 		store.notifyQueryManager(k, Set, *obj)
@@ -223,9 +246,7 @@ func (store *Store) Rename(sourceKey, destKey string) bool {
 
 	// Remove the source key
 	store.store.Delete(sourceKey)
-	if KeyspaceStat[0] != nil {
-		KeyspaceStat[0]["keys"]--
-	}
+	store.numKeys--
 
 	// Notify watchers about the deletion of the source key
 	if store.watchChan != nil {
@@ -233,13 +254,6 @@ func (store *Store) Rename(sourceKey, destKey string) bool {
 	}
 
 	return true
-}
-
-func (store *Store) incrementKeyCount() {
-	if KeyspaceStat[0] == nil {
-		KeyspaceStat[0] = make(map[string]int)
-	}
-	KeyspaceStat[0]["keys"]++
 }
 
 func (store *Store) Get(k string) *object.Obj {
@@ -276,7 +290,7 @@ func (store *Store) deleteKey(k string, obj *object.Obj) bool {
 	if obj != nil {
 		store.store.Delete(k)
 		store.expires.Delete(obj)
-		KeyspaceStat[0]["keys"]--
+		store.numKeys--
 
 		if store.watchChan != nil {
 			store.notifyQueryManager(k, Del, *obj)
@@ -298,10 +312,10 @@ func (store *Store) delByPtr(ptr string) bool {
 
 // notifyQueryManager notifies the query manager about a key change, so that it can update the query cache if needed.
 func (store *Store) notifyQueryManager(k, operation string, obj object.Obj) {
-	store.watchChan <- WatchEvent{k, operation, obj}
+	store.watchChan <- QueryWatchEvent{k, operation, obj}
 }
 
-func (store *Store) GetStore() *swiss.Map[string, *object.Obj] {
+func (store *Store) GetStore() common.ITable[string, *object.Obj] {
 	return store.store
 }
 

@@ -7,7 +7,7 @@ import (
 	"github.com/dicedb/dice/internal/shard"
 )
 
-// CmdType defines the type of Redis command based on how it interacts with shards.
+// CmdType defines the type of DiceDB command based on how it interacts with shards.
 // It uses an integer value to represent different command types.
 type CmdType int
 
@@ -21,15 +21,15 @@ const (
 	Custom                     // Custom commands involve direct client communication.
 )
 
-// CmdsMeta stores metadata about Redis commands, including how they are processed across shards.
+// CmdsMeta stores metadata about DiceDB commands, including how they are processed across shards.
 // CmdType indicates how the command should be handled, while Breakup and Gather provide logic
 // for breaking up multishard commands and gathering their responses.
 type CmdsMeta struct {
-	Cmd          string                                                                               // Command name.
-	Breakup      func(mgr *shard.ShardManager, redisCmd *cmd.RedisCmd, c *comm.Client) []cmd.RedisCmd // Function to break up multishard commands.
-	Gather       func(responses ...eval.EvalResponse) []byte                                          // Function to gather responses from shards.
-	RespNoShards func(args []string) []byte                                                           // Function for commands that don't interact with shards.
-	CmdType                                                                                           // Enum indicating the command type.
+	Cmd          string                                                                                  // Command name.
+	Breakup      func(mgr *shard.ShardManager, DiceDBCmd *cmd.DiceDBCmd, c *comm.Client) []cmd.DiceDBCmd // Function to break up multishard commands.
+	Gather       func(responses ...eval.EvalResponse) []byte                                             // Function to gather responses from shards.
+	RespNoShards func(args []string) []byte                                                              // Function for commands that don't interact with shards.
+	CmdType                                                                                              // Enum indicating the command type.
 }
 
 // WorkerCmdsMeta is a map that associates command names with their corresponding metadata.
@@ -37,12 +37,7 @@ var (
 	WorkerCmdsMeta = map[string]CmdsMeta{}
 
 	// Metadata for global commands that don't interact with shards.
-	// INFO and PING are examples of global commands.
-	infoCmdMeta = CmdsMeta{
-		Cmd:          "INFO",
-		CmdType:      Global,
-		RespNoShards: eval.RespINFO,
-	}
+	// PING is an example of global command.
 	pingCmdMeta = CmdsMeta{
 		Cmd:          "PING",
 		CmdType:      Global,
@@ -77,7 +72,6 @@ var (
 // init initializes the WorkerCmdsMeta map by associating each command name with its corresponding metadata.
 func init() {
 	// Global commands.
-	WorkerCmdsMeta["INFO"] = infoCmdMeta
 	WorkerCmdsMeta["PING"] = pingCmdMeta
 
 	// Single-shard commands.
