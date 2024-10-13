@@ -5268,3 +5268,15 @@ func evalJSONSTRAPPEND(args []string, store *dstore.Store) []byte {
 	obj.Value = jsonData
 	return clientio.Encode(resultsArray, false)
 }
+
+// evalRANDOMKEY returns a random key from pool of keys in DiceDB
+func evalRANDOMKEY(args []string, store *dstore.Store) []byte {
+	queryStr := "SELECT * ORDER BY $key ASC"
+	query, _ := sql.ParseQuery(queryStr)
+	result, _ := sql.ExecuteQuery(&query, store.GetStore())
+	resultKeys := make([]string, len(result))
+	for i, r := range result {
+		resultKeys[i] = r.Key
+	}
+	return clientio.Encode(resultKeys, false)
+}

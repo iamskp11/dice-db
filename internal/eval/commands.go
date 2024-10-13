@@ -1093,6 +1093,12 @@ var (
 		Arity:    3,
 		KeySpecs: KeySpecs{BeginIndex: 1},
 	}
+	randomkeyCmdMeta = DiceCmdMeta{
+		Name: "RANDOMKEY",
+		Info: `RANDOMKEY returns a randomkey from pool of keys stored in DiceDB`,
+		Eval:     evalRANDOMKEY,
+		Arity:    0,
+	}
 )
 
 func init() {
@@ -1214,6 +1220,7 @@ func init() {
 	DiceCmds["ZADD"] = zaddCmdMeta
 	DiceCmds["ZRANGE"] = zrangeCmdMeta
 	DiceCmds["JSON.STRAPPEND"] = jsonstrappendCmdMeta
+	DiceCmds["RANDOMKEY"] = randomkeyCmdMeta
 }
 
 // Function to convert DiceCmdMeta to []interface{}
